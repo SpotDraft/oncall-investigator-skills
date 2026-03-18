@@ -4,13 +4,19 @@ A collection of [Cursor Agent Skills](https://docs.cursor.com) for SpotDraft's a
 
 ## Overview
 
-The repository is structured around a central **OnCall Investigator** command (`.cursor/commands/oncall-investigator.md`) that orchestrates an autonomous, 11-step investigation workflow. The individual skill files act as specialized runbooks the agent loads on demand to handle specific issue categories.
+The repository is structured around two Cursor commands and a set of specialized skill files:
+
+- **OnCall Investigator** (`.cursor/commands/oncall-investigator.md`) — Autonomous 11-step investigation workflow for live incidents
+- **Skill Generator** (`.cursor/commands/skill-generator.md`) — Converts resolved incidents into reusable debugging skills
+
+The individual skill files act as specialized runbooks the agent loads on demand to handle specific issue categories.
 
 ```
 oncall-investigator-skills/
 ├── .cursor/
 │   └── commands/
-│       └── oncall-investigator.md       # Main agent prompt & investigation workflow
+│       ├── oncall-investigator.md       # Live incident investigation workflow
+│       └── skill-generator.md           # Resolved incident → reusable SKILL.md
 ├── contract-lookup/
 │   └── SKILL.md                         # Contract & workspace context lookup
 ├── contract-signing-triage/
@@ -68,8 +74,19 @@ The **OnCall Investigator** is triggered with a Slack incident channel URL. It t
 
 ## Adding New Skills
 
+### Manually
+
 1. Create a new directory named after the skill (e.g., `approval-triage/`)
 2. Add a `SKILL.md` file with a YAML front matter block (`name`, `description`) followed by the runbook content
 3. The `description` field is used by the agent to decide when to invoke the skill — make it specific and include trigger phrases
 4. Reference BigQuery queries, GCP log filters, and admin panel URLs relevant to the skill
 5. Document any known issue patterns, past incidents, and escalation triggers
+
+### From a Resolved Incident
+
+Use the **Skill Generator** command (`.cursor/commands/skill-generator.md`) with a resolved Slack incident channel URL. It will:
+
+1. Parse the incident channel for debugging signal
+2. Generalize the resolution into a reusable pattern
+3. Check existing skills to avoid duplicates (decides: new skill / update existing / no skill needed)
+4. Output a complete `SKILL.md` matching the style of existing skills

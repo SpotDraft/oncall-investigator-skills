@@ -197,6 +197,14 @@ Recommend improvements to prevent recurrence.
 
 ---
 
+### Step 12 — Label Jira Ticket
+
+Find the Jira ticket from channel messages/topic/bookmarks. Fallback: `searchJiraIssuesUsingJql` with incident identifiers.
+
+Add label `agent-investigated` via `editJiraIssue` — preserve existing labels (`getJiraIssue` first, append). Skip if no ticket found.
+
+---
+
 ## Slack Output
 
 Post in the same channel:

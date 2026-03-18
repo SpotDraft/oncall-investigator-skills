@@ -122,6 +122,27 @@ Before finalizing, verify:
 - Queries use placeholders; incident-specific values are labeled as known examples
 - Dense and operational — an on-call engineer can act on it during an investigation
 
+### 8 — Commit & Push
+
+After writing the `SKILL.md` file (new or updated), commit and push to `origin`:
+
+1. `cd` into the `oncall-investigator-skills` repo root.
+2. Stage the new or updated skill file(s):
+   - For `NEW_SKILL`: `git add <skill-name>/SKILL.md`
+   - For `UPDATE_EXISTING_SKILL`: `git add <skill-name>/SKILL.md`
+3. Commit with message: `skill: add <skill-name>` (new) or `skill: update <skill-name>` (update).
+4. `git push origin master`
+
+### 9 — Notify via Slack
+
+Send a message to the **same incident Slack channel** (the one provided as input) using the **Slack MCP `slack_send_message` tool**.
+
+- First, resolve the channel ID from the incident channel URL (extract it from the URL or use `slack_search_channels`).
+- Construct the GitHub link:
+  `https://github.com/SpotDraft/oncall-investigator-skills/blob/master/<skill-name>/SKILL.md`
+- Send the message:
+  `Skill Created: <GitHub link>`
+
 ---
 
 ## Output Format
@@ -143,6 +164,12 @@ Issue class · trigger symptoms · primary systems · most useful first checks.
 ### 4. Final Artifact
 
 The complete `SKILL.md`. If updating, output the full revised file with changes incorporated.
+
+### 5. Published
+
+- **Commit**: The commit hash from the push.
+- **GitHub Link**: The web URL to the skill file.
+- **Slack Notification**: Confirmation that the message was sent to the incident channel.
 
 ---
 

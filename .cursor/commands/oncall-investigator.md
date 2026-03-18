@@ -8,14 +8,16 @@ Focus on signal over verbosity.
 
 ## Tools
 
-| Tool | Purpose |
-|------|---------|
-| **Slack MCP** | Read channels, threads, and search messages across the workspace |
-| **BigQuery MCP** | Query GCP application logs |
-| **Groundcover MCP** | Access service logs, traces, and infrastructure telemetry |
-| **Atlassian MCP (Jira)** | Search past incidents and RCA documents |
-| **Codebase** | Inspect services and trace execution paths. Also read `.md` skill/runbook files in repositories for debugging guidance, known issues, and workflows |
-| **Product Docs** | https://help.spotdraft.com/ |
+
+| Tool                     | Purpose                                                                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slack MCP**            | Read channels, threads, and search messages across the workspace                                                                                    |
+| **BigQuery MCP**         | Query GCP application logs                                                                                                                          |
+| **Groundcover MCP**      | Access service logs, traces, and infrastructure telemetry                                                                                           |
+| **Atlassian MCP (Jira)** | Search past incidents and RCA documents                                                                                                             |
+| **Codebase**             | Inspect services and trace execution paths. Also read `.md` skill/runbook files in repositories for debugging guidance, known issues, and workflows |
+| **Product Docs**         | [https://help.spotdraft.com/](https://help.spotdraft.com/)                                                                                          |
+
 
 ---
 
@@ -34,6 +36,7 @@ All investigation context must be derived from this channel and related sources.
 ## Objectives
 
 **Determine:**
+
 - What is failing
 - Which service/component is responsible
 - Why the failure most likely occurred
@@ -41,6 +44,7 @@ All investigation context must be derived from this channel and related sources.
 - What long-term fix is required
 
 **Also determine:**
+
 - Deployment correlation
 - Customer blast radius
 
@@ -51,6 +55,7 @@ All investigation context must be derived from this channel and related sources.
 ### Step 1 — Parse Slack Context
 
 **Extract:**
+
 - customer
 - feature / workflow
 - timestamps
@@ -60,6 +65,7 @@ All investigation context must be derived from this channel and related sources.
 - linked dashboards
 
 **Identifiers to collect:**
+
 - `request_id`
 - `contract_id`
 - `workspace_id`
@@ -76,11 +82,13 @@ All investigation context must be derived from this channel and related sources.
 Understand expected behavior before debugging.
 
 **Use:**
-- https://help.spotdraft.com/
+
+- [https://help.spotdraft.com/](https://help.spotdraft.com/)
 - Slack workspace search
 - `.md` skill/runbook files in repos
 
 **Focus on:**
+
 - Expected workflows
 - State transitions
 - Known failure modes
@@ -91,6 +99,7 @@ Understand expected behavior before debugging.
 ### Step 3 — Related Incidents
 
 Search Slack + Jira using:
+
 - errors
 - services
 - workflows
@@ -105,12 +114,14 @@ Include **web links** only if relevant matches are found.
 Use BigQuery + Groundcover. Start with identifiers, then expand if needed.
 
 **Strategy:**
+
 1. Query using IDs
 2. Expand to services
 3. Search by error / stack trace
 4. Correlate traces
 
 **Extract:**
+
 - service
 - error
 - timestamp
@@ -124,9 +135,11 @@ Include **Groundcover + GCP log links**.
 ### Step 5 — System Flow
 
 Reconstruct flow:
+
 ```
 API → jobs → services → DB → external systems
 ```
+
 Identify the earliest failure point.
 
 ---
@@ -136,6 +149,7 @@ Identify the earliest failure point.
 Inspect code paths and relevant `.md` skill files.
 
 **Look for:**
+
 - Known issues
 - Documented fixes
 - Edge cases
@@ -154,6 +168,7 @@ Check recent deploys affecting the failing service.
 ### Step 8 — Blast Radius
 
 Determine scope:
+
 - Single customer
 - Limited customers
 - System-wide
@@ -163,6 +178,7 @@ Determine scope:
 ### Step 9 — Root Cause (Single)
 
 Provide the **most likely root cause**, supported by:
+
 - Logs
 - Code
 - Skill files or past incidents (if applicable)
@@ -184,25 +200,23 @@ Recommend improvements to prevent recurrence.
 ## Slack Output
 
 Post in the same channel:
-> Cursor Analysis
+*Cursor Analysis*
 
 Then reply in thread with **one message** (split only if >5000 chars).
 
 ### Thread Format (Slack Rich Text)
 
 ```
-*Cursor Autonomous Investigation*
-
 *Related Incidents*
 Links (if found)
 
 *Log Findings*
-Service:
-Error:
-Timestamp:
-Identifiers:
-Groundcover:
-GCP Logs:
+- Service:
+- Error:
+- Timestamp:
+- Identifiers:
+- Groundcover:
+- GCP Logs:
 
 *System Flow*
 Failure point in flow.
@@ -236,3 +250,4 @@ Recommendations
 - Reuse identifiers in queries
 - Use skill files as shortcuts to known fixes
 - Prioritize unblocking the customer
+

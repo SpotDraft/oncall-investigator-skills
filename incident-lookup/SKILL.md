@@ -213,7 +213,7 @@ If no matching incident found:
 | Symptom | Likely Resolution | Past Incident |
 |---------|------------------|---------------|
 | OTP not received (Outlook) | Domain whitelisting | BIAL Jan 2026, Ather Feb 2026 |
-| Email suppressed | Reactivate on Postmark | Visit app Dec 2025 |
+| Email suppressed (hard bounce / spam complaint) | Search #postmark-bot for recipient email; reactivate in Postmark (⚠️ US server access restricted) | Visit app Dec 2025, Doral Mar 2026 (WSID 186781, US, SPD-42048) |
 | Signature fields retained | Manual removal workaround | Allen Feb 2026 (regression) |
 | Word server error | Re-upload clean document | Multiple incidents |
 | Approval reset | Check WF manager version | Noon Feb 2026 |

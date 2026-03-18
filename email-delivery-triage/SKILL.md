@@ -140,6 +140,15 @@ https://api.{cluster}.spotdraft.com/admin/emails/emailaudit/?contract_id={contra
 
 Was the email sent? What error was recorded?
 
+### Step 3.5: Search #postmark-bot Channel First
+
+Before logging into Postmark directly, search the `#postmark-bot` channel (Slack channel `C01RLTQ0TNC`) for the recipient email address. This channel receives delivery alerts automatically and is the fastest way to spot suppression events.
+
+**Search query to run:**
+- `in:#postmark-bot {recipient_email}` — look for bounce, spam, or suppression events
+
+If results show bounce/spam entries matching the recipient, skip to Step 4 (suppression confirmed via Postmark).
+
 ### Step 4: Check Postmark for Suppression
 
 Postmark is SpotDraft's email delivery provider. Check if the recipient email is **suppressed**.
@@ -149,7 +158,15 @@ Common suppression reasons:
 - Previous spam complaint
 - Email on suppression list
 
-**Resolution if suppressed:** Reactivate the email on Postmark, then ask customer to check their mail server.
+**Key diagnostic signal:** If the SpotDraft email audit shows emails were "sent successfully" but events are **on and off** (intermittent delivery records), this is a strong indicator that Postmark has suppressed the recipient — emails leave SpotDraft but Postmark silently drops them.
+
+**⚠️ Postmark server access is restricted by region.** Not all engineers have access to the Postmark US transactional server. Before attempting to check Postmark directly, confirm you have access. If you don't, escalate to someone who does (US server access is limited to specific team members — check with your team lead or DevOps).
+
+- US cluster → Postmark US transactional server (restricted access — ask team lead)
+- IN cluster → Postmark India transactional server
+- Check in Postmark under Suppressions / Bounces for the recipient email
+
+**Resolution if suppressed:** Reactivate the email on Postmark, then inform the customer/CSM to follow up with the end user that future emails will now be delivered. Note: reactivation only affects *future* emails — it does not resend previously missed ones.
 
 ### Step 5: Check Customer Email Configuration
 
@@ -184,3 +201,4 @@ OTPs have special behavior:
 - **BIAL OTP issue** (Jan 2026): Outlook client, resolved by domain whitelisting
 - **Ather Energy OTP** (Feb 2026): Same pattern — Outlook, domain whitelisting needed
 - **Visit app email suppression** (Dec 2025): Email suppressed on Postmark, reactivated user
+- **Doral — user not receiving emails** (Mar 2026, WSID 186781, Cluster US): User `cwalker@doral-llc.com` not receiving contract execution emails. Email audit showed emails sent but events "on and off". Postmark bot channel had alerts for the address. Root cause: user suppressed in Postmark (hard bounce / spam complaint). Fix: reactivated in Postmark. Took ~3 days due to restricted access to Postmark US server. Jira: [SPD-42048](https://spotdraft.atlassian.net/browse/SPD-42048). Incident: [#incident-20260306-medium-doral-user-not-receiving-emails](https://spotdraft.slack.com/archives/C0AK28S600J)

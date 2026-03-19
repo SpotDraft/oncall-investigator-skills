@@ -1,6 +1,6 @@
 ---
 name: contract-signing-triage
-description: "Diagnose and resolve contract signing, execution, and document generation errors in SpotDraft. Use this skill when support reports issues like: contract signing failures, 'Word server raised an error', signature fields overlapping or retained after editing, contracts stuck in signing state, unable to send for signing, unable to execute contract, document preview failures, PDF upload errors, version selection issues when moving contracts between stages, or any error during the sign/execute workflow. Also trigger on 'signing error', 'execution failed', 'signature fields', 'contract preview', 'document generation failure', 'version mismatch', or 'template editable' issues."
+description: "Diagnose and resolve contract signing, execution, and document generation errors in SpotDraft. Use this skill when support reports issues like: contract signing failures, 'Word server raised an error', 'Document Generation Unsuccessful', 'SoftTimeLimitExceeded', pre-sign PDF or prepare-for-signing failures, signature fields overlapping or retained after editing, contracts stuck in signing state, unable to send for signing, unable to execute contract, document preview failures, PDF upload errors, version selection issues when moving contracts between stages, or any error during the sign/execute workflow. Also trigger on 'signing error', 'execution failed', 'signature fields', 'contract preview', 'document generation failure', 'version mismatch', or 'template editable' issues."
 ---
 
 # Contract Signing & Execution Triage
@@ -98,6 +98,15 @@ resource.type="k8s_container" labels."k8s-pod/app"="spotdraft-qa-django-app" tex
 ```
 resource.type="k8s_container" labels."k8s-pod/app"="spotdraft-qa-django-app-deffered-tasks" textPayload:("{contract_id}" OR "signing" OR "execution") severity >= ERROR
 ```
+
+**Prod — pre-sign PDF / SoftTimeLimitExceeded (use when incident is on prod):** Prod uses `jsonPayload`, not `textPayload`. Use `resourceNames: ["projects/spotdraft-prod"]`. Cluster label for US prod: `resource.labels.cluster_name="prod-usa"`. Deferred tasks workload: `sd-apps-django-app-deffered-tasks`.
+```
+logName="projects/spotdraft-prod/logs/stderr"
+resource.labels.cluster_name="prod-usa"
+labels."k8s-pod/app"="sd-apps-django-app-deffered-tasks"
+jsonPayload.message=~"SoftTimeLimitExceeded|save_pre_sign_pdf|cf_exporter|generate_docx_for_payload"
+```
+Always add a time window (e.g. `timestamp >= "YYYY-MM-DDTHH:MM:00Z"`) to limit volume.
 
 **Check nginx for upstream timeouts on contract endpoints:**
 ```
@@ -198,6 +207,7 @@ Cross-reference BQ Django model data with GCP log errors, DLQ failures, and API 
 | Sig setup `sent_for_signature=TRUE`, `is_completed=FALSE` | "Cannot edit a signature setup" | — | 400 on `/sign` | Race condition in signing flow |
 | — | "Word server raised an error" | `document_conversion_task` failures | 500 on `/preview` | Document processing failure |
 | — | Nginx "upstream timed out" | — | No response logged | Worker overloaded/killed |
+| — | "SoftTimeLimitExceeded" in deffered-tasks | GENERATE_PRE_SIGN_PDF FAILED/TIMED_OUT | "Document Generation Unsuccessful" | Pre-sign PDF timeout (cf-exporter path) |
 
 ## Common Issue Patterns
 
@@ -271,6 +281,38 @@ Cross-reference BQ Django model data with GCP log errors, DLQ failures, and API 
 - Computed variables with incorrect types
 - Recently changed SFDC mappings
 - Template construction issues
+
+### "Document Generation Unsuccessful: SoftTimeLimitExceeded()" (pre-sign PDF timeout)
+**What it means:** User sees "Document Generation Unsuccessful: SoftTimeLimitExceeded()" when preparing a contract for signing (e.g. from Redlining stage). The Celery task that generates the pre-sign PDF hit its soft time limit while calling the cf-exporter service.
+
+**System flow:** API (prepare for sign) → AsyncTaskService.create_task(GENERATE_PRE_SIGN_PDF) → `save_pre_sign_pdf_for_template_contract_task` (Celery) → contract_export_service.get_contract_docx_preview → `cf_exporter_client.generate_docx_for_payload` → sd-apps-cfexporter (HTTP) → task killed by Celery soft limit.
+
+**Identifiers to collect:** `{contract_id}`, `{wsid}`, `{cluster}` (e.g. US → api.us.spotdraft.com). Async task ID is in admin URL or logs.
+
+**Investigation steps:**
+1. **Confirm the failure:** Open async task admin for the contract: `https://api.{cluster}.spotdraft.com/admin/core/asynctask/?q={contract_id}`. Look for task type `GENERATE_PRE_SIGN_PDF` with status `FAILED` or `TIMED_OUT` and failure reason or stack mentioning `SoftTimeLimitExceeded` or `billiard.exceptions.SoftTimeLimitExceeded`.
+2. **Prod logs (if prod):** Use GCP Cloud Logging with `resourceNames: ["projects/spotdraft-prod"]`, filter on `sd-apps-django-app-deffered-tasks`, `jsonPayload.message` containing `SoftTimeLimitExceeded` or `generate_docx_for_payload`, and a narrow time window. Optionally check for `sd-apps-cfexporter` logs (e.g. Deprecated "attachModule") to see cf-exporter load or slowness.
+3. **Rule out DocuSign auth:** In a past incident (Odessa), the same UI error was resolved after customer re-authenticated with DocuSign. Check Tray/integration status for the workspace if retry fails.
+4. **Contributing factors:** Large or complex template (e.g. 500+ row dynamic table), high cf-exporter load (limited concurrency per pod), or deffered-tasks pod restart during the run (check for cloudsql-proxy socket close or pod eviction around the failure time).
+
+**Immediate mitigation (unblock customer):**
+1. **Retry the async task** — Either:
+   - **Django admin:** Open the failed async task (e.g. `https://api.{cluster}.spotdraft.com/admin/core/asynctask/{async_task_id}/change/`). If the UI allows retry, use it; otherwise use the management command below.
+   - **Management command (preferred when available):** In the API repo, run:
+     ```bash
+     python manage.py retry_pre_sign_pdf_async_task --contract-id {contract_id}
+     # or by async task ID
+     python manage.py retry_pre_sign_pdf_async_task --async-task-id {async_task_id}
+     # preview only
+     python manage.py retry_pre_sign_pdf_async_task --contract-id {contract_id} --dry-run
+     ```
+     Command validates task type GENERATE_PRE_SIGN_PDF and status FAILED/TIMED_OUT, then re-enqueues the Celery task. Run in the correct cluster environment (e.g. prod US).
+2. After retry, ask the customer to try "Prepare for signing" again; verify in workspace that the contract can proceed to signing.
+3. If retry fails again: check DocuSign auth for the workspace; inspect template for very large dynamic tables or heavy content; consider temporary scale-up of cf-exporter if under load.
+
+**Code path (for reference):** Failure is in `contracts_v3/clients/cf_exporter_client.py` — `generate_docx_for_payload` (has `@retry(tries=3)` but SoftTimeLimitExceeded is in `fatal_exceptions`, so no retry on timeout). Celery task has no explicit SoftTimeLimitExceeded handler and marks the async task as FAILED.
+
+**Related incidents / Jira:** Formation Bio (Mar 2026, contract 1422552, WSID 144671, US) — mitigated by retrying pre-sign PDF task; Amagi (Jul 2025) — high payload size → cf-exporter load, temp fix was scaling cf-exporter; Odessa (May 2025) — DocuSign auth expiry, resolved after re-auth. Jira: SPD-42443 (Formation Bio incident).
 
 ## Escalation Triggers
 - Multiple customers reporting the same signing issue → likely a regression, escalate as Critical

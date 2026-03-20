@@ -314,6 +314,34 @@ Cross-reference BQ Django model data with GCP log errors, DLQ failures, and API 
 
 **Related incidents / Jira:** Formation Bio (Mar 2026, contract 1422552, WSID 144671, US) — mitigated by retrying pre-sign PDF task; Amagi (Jul 2025) — high payload size → cf-exporter load, temp fix was scaling cf-exporter; Odessa (May 2025) — DocuSign auth expiry, resolved after re-auth. Jira: SPD-42443 (Formation Bio incident).
 
+### Signature Hidden by Interactive PDF Overlay (Lemfi — Mar 2026)
+
+**Symptom:** Signature is not visible in the signed or executed contract PDF. `GENERATE_EXECUTED_PDF` AsyncTask completes successfully with no errors. Pre-sign PDF export (`PRE_SIGN_PDF`) contains only a stamp/box with the rest of the page blank (but text is selectable). The PDF renders correctly in Mac Preview but appears blank in Adobe/Chrome.
+
+**Root cause:** The source PDF uploaded by the customer contains an **interactive stamp or form field annotation** (e.g. an AcroForm box / stamp widget) that:
+1. Renders as an opaque overlay in strict renderers (Adobe, Chrome)
+2. Sits on top of the signature placement coordinates — hiding the signature visually
+3. The underlying document content and signature ARE present (selectable) but invisible
+
+**Key diagnostic signals:**
+- `AsyncTask` for `GENERATE_EXECUTED_PDF` → `status=COMPLETED`, no `error_message`
+- `ContractExport` for `PRE_SIGN_PDF` → only the interactive stamp is visible; rest of page blank but selectable
+- `contracts_v3_signatureinputfieldvalue.value` → `null` (media reference ID exists but value not stored)
+- Signature placed at correct coordinates (cfexporter converts 96 DPI → 72 DPI, so always check actual pts: `x_px * 0.75`)
+- File renders fully in Mac Preview; opening and saving from Preview fixes Adobe rendering
+
+**Rule out before concluding:** Coordinates off-page — cfexporter scales pixel coords to PDF points at 0.75× ratio. An `x1=633.05px` becomes `474.8pt` which is within A4 (595pt). Do NOT assume off-page unless the calculated pt value exceeds page dimensions.
+
+**Mitigation (immediate unblock):**
+1. Download the latest signed version of the contract from Django admin: `https://api.{cluster}.spotdraft.com/admin/contracts_v3/contractversion/?contract_id={contract_id}`
+2. Open it in **Mac Preview**, move the interactive stamp box to an empty area to expose the signature
+3. Save from Preview — this re-renders the PDF stripping the overlay issue
+4. Attach audit trail and regenerate the executed contract version from this fixed PDF
+
+**Long-term fix:** Detect and strip interactive form field annotations (AcroForm widgets, stamp boxes) from source PDFs during upload or pre-sign validation. The PDF interactive layer structure should be flattened before signing so overlays cannot hide signature placements. Open Jira task to add this to the PDF validation pipeline.
+
+**Confirmed example:** Lemfi (WSID 244718, EU cluster, contract 372981, March 2026). Incident: [#incident-20260317-high-lemfi-signature-not-visible-in-executed-contract](https://spotdraft.slack.com/archives/C0ALPNYE4FR)
+
 ## Escalation Triggers
 - Multiple customers reporting the same signing issue → likely a regression, escalate as Critical
 - Error involves data loss (executed version replaced) → escalate immediately

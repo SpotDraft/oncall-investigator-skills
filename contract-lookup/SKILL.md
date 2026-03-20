@@ -360,11 +360,14 @@ public/contract/views_v2.py:619  download_link()
 
 **Jira:** SPD-39109 (marked fixed Jan 2026 but race condition persists — prior fix addressed a different symptom)
 
+**Related (different symptom):** Clickwrap exists with `salesforce_id` but **Salesforce KP fields stay blank** and **Tray shows no KP Created logs** — often **Tray solution instance disabled** for a date range; mitigation is **re-enable Tray** (resolve **Native vs Tray** conflict) and **bulk retrigger** webhooks. See **clickwrap-tray-salesforce-sync-triage**.
+
 ---
 
 ## Connecting to Other Triage Skills
 
 Contract lookup is usually the first step:
+- **For clickwrap → Salesforce KP sync / empty Tray logs** (not download_link 404) → **clickwrap-tray-salesforce-sync-triage**
 - **For email/OTP issues** → Look up contract to find counterparty email, then use email-delivery-triage
 - **For signing errors** → Check contract kind, status, version history and sig setup, then use contract-signing-triage
 - **For approval issues** → Query `approvals_v5_approvalv5` directly for approval state

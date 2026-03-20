@@ -140,8 +140,25 @@ Send a message to the **same incident Slack channel** (the one provided as input
 - First, resolve the channel ID from the incident channel URL (extract it from the URL or use `slack_search_channels`).
 - Construct the GitHub link:
   `https://github.com/SpotDraft/oncall-investigator-skills/blob/master/<skill-name>/SKILL.md`
-- Send the message:
-  `Skill Created: <GitHub link>`
+- Send **one** message that includes:
+  1. **Header** — `Skill Created:` or `Skill Updated:` (match whether you added a new directory or edited an existing `SKILL.md`).
+  2. **Link** — the GitHub blob URL above.
+  3. **Brief** — 3–6 short bullets (Slack `*bold*` labels optional) summarizing what the skill covers **or**, for updates, what **changed** (new failure pattern, new queries, new Jira links, etc.).
+  4. **Visual polish** — use Slack emoji (e.g. `:white_check_mark:`, `:mag:`, `:books:`, `:link:`) and line breaks so on-call can scan quickly.
+
+**Example shape (adapt content every time):**
+
+```
+:white_check_mark: *Skill Created*
+:link: https://github.com/SpotDraft/oncall-investigator-skills/blob/master/<skill-name>/SKILL.md
+
+:books: *What’s in this skill*
+• …
+• …
+
+:mag: *Sources*
+• Incident / Jira: …
+```
 
 ---
 

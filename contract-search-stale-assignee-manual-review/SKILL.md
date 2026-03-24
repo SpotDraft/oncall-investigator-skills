@@ -124,7 +124,7 @@ Narrow with a **short time range** around reassignment.
    - Latest `ManualTaskData` for the review task: `is_latest = true`, `assignee_org_user_id` = **new** user.  
    - Note **`created`** timestamp on the **new** row (critical for race proof).
 
-3. **Confirm approvals not blaming:**  
+3. **Confirm approvals are not the cause:**  
    - Ensure no pending approval still assigned to old user if symptom mixes review + approvals.
 
 4. **Inspect ES document `TEMPLATE_{contract_id}`:**  

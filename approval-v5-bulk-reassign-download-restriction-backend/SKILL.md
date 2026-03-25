@@ -144,8 +144,8 @@ WHERE approval_id IN ({approval_id_list})
 5. **Execute** inside `transaction.atomic()`:
    - `bulk_update` approver mappings (`actor_id`, `actor_type`).
    - `BulkCreateContractAuditsUseCase` for reassignment audit payload (match internal playbook for `ApprovalV5ReassignedAuditDataDomainModel` serialization).
-   - For each **DOWNLOAD** restrict where value is **`ANY_ONE`** and customer needs named exemption: set to **`SPECIFIC_USERS_AND_TEAMS`** if appropriate, **`bulk_create`** `ApprovalV5ActorMapping` rows with `actor_relation_type=RESTRICTION` and `actor_relation_id=<restrict_action_pk>`.
-   - **Skip** restrict rows already allowing broad download if no change needed (see incident script branch).
+   - For each **DOWNLOAD** restrict: if value is already **`ANY_ONE`**, download is broadly allowed—**skip** DB changes for that row unless product/CS confirms a different intent.
+   - Otherwise (e.g. **`NO_ONE`** or **`SPECIFIC_USERS_AND_TEAMS`** without the target user): set value to **`SPECIFIC_USERS_AND_TEAMS`** when adding exemptions, then **`bulk_create`** `ApprovalV5ActorMapping` rows with `actor_relation_type=RESTRICTION` and `actor_relation_id=<restrict_action_pk>` for the users who may download.
 6. **Enqueue** `partially_resync_contracts_task` for distinct `contract_id`s.
 7. **Verify** in app + ask customer to confirm; update incident / Rootly.
 

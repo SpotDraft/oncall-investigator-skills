@@ -104,6 +104,7 @@ LIMIT 10
 - Column appeared in previous reports but has stopped appearing after someone adjusted workspace settings
 
 **Do not use for:**
+- DocuSign (or external sign) template contracts where **`contract$execution_date`** is null in the **pre-sign / cfexporter payload** and the date is blank on the signed PDF → use **`docusign-execution-date-blank-pre-sign`**
 - Execution Date field not being captured/extracted on individual contracts → different issue (key pointer value not populated from contract metadata or execution event)
 - Report failing to generate entirely → use `contract-lookup` or check GCP logs / DLQ for task failures
 - Specific contract's execution date field missing in the contract sidebar (not the report) → check key pointer value extraction separately
@@ -299,3 +300,4 @@ Different issue class from the above. The column appears in the report header, b
 
 - **contract-lookup** — Use to gather contract context and check workspace settings before diagnosing
 - **incident-lookup** — Search for prior similar incidents if pattern is new or affects multiple customers
+- **docusign-execution-date-blank-pre-sign** — DocuSign execution date null in document payload / blank on PDF (not repository report columns)

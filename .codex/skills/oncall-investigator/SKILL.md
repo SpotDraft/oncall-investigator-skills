@@ -28,29 +28,60 @@ Treat the shared SpotDraft skill library at `https://github.com/SpotDraft/oncall
   - `incident-lookup/SKILL.md` for past Slack/Jira incidents, prior RCAs, and recurring patterns.
   - `contract-lookup/SKILL.md` for contract, workspace, counterparty, workflow, and setup context.
   - `email-delivery-triage/SKILL.md` for OTP, Postmark, suppression, SMTP, spam, or email audit complaints.
-  - `contract-signing-triage/SKILL.md` for sign/execute failures, signing-link issues, document generation, or stuck signing flows.
-  - `infrastructure-alert-response/SKILL.md` for GCP, Kubernetes, or monitoring-alert driven incidents.
+- `contract-signing-triage/SKILL.md` for sign/execute failures, signing-link issues, document generation, or stuck signing flows.
+- `infrastructure-alert-response/SKILL.md` for GCP, Kubernetes, or monitoring-alert driven incidents.
 - If a narrower skill in that repo clearly matches the incident symptom, prefer its admin URLs, query patterns, known issue catalog, and escalation triggers over improvising a fresh workflow.
+
+## Validated Tooling
+
+Only use the tools listed in this section for the core incident-investigation workflow.
+
+- Slack plugin:
+  - `_slack_read_channel` to read the incident channel when the URL already identifies it.
+  - `_slack_read_thread` to read parent-message threads and follow-ups.
+  - `_slack_search_public` and `_slack_search_public_and_private` to find related incidents, prior discussions, and matching errors.
+  - `_slack_search_channels` only if channel discovery is actually needed. Do not make it a default step when the input URL already identifies the channel.
+  - `_slack_send_message` to post `*Codex Analysis*` and the final in-thread report in normal mode.
+  - `_slack_send_message_draft` only for `draft-only` or `no-post` workflows when a Slack draft is explicitly desired.
+  - Do not use `_slack_read_user_profile`, `_slack_search_users`, `_slack_read_canvas`, `_slack_create_canvas`, or `_slack_schedule_message` for this skill.
+- Jira MCP:
+  - `jira_get` to find prior incidents, RCAs, and inspect the current incident ticket.
+  - `jira_patch` to append `agent-investigated` while preserving existing labels.
+- BigQuery MCP:
+  - `mcp__bigquery__execute_sql` as the primary structured-log and state query tool.
+  - `mcp__bigquery__search_catalog` and `mcp__bigquery__get_table_info` only when the right dataset or table is not already known.
+- Groundcover MCP:
+  - `mcp__groundcover__query_logs` for service and error logs.
+  - `mcp__groundcover__query_traces` for request-path and dependency analysis.
+  - `mcp__groundcover__query_events` for deploy, infra, and incident-event correlation.
+  - `mcp__groundcover__query_metrics` for blast-radius and service-health signals.
+  - `mcp__groundcover__get_workloads` only when workload discovery is required for ownership or blast-radius analysis.
+- Local sources:
+  - Repo code and local `.md` runbooks for execution-path tracing and known debugging workflows.
+  - Product docs for expected workflow validation.
+  - Relevant `SKILL.md` files from `oncall-investigator-skills` for issue-specific debugging shortcuts.
 
 ## Core Workflow
 
 1. Parse Slack context.
-- Extract customer, workflow, timestamps, error text, deployments or config changes, services, jobs, APIs, and dashboards.
+- Use `_slack_read_channel` and `_slack_read_thread` to extract customer, workflow, timestamps, error text, deployments or config changes, services, jobs, APIs, and dashboards.
 - Collect identifiers: `request_id`, `contract_id`, `workspace_id`, `cluster_id`, `template_id`, `approval_id`, `contract_type`, `contract_type_id`.
 
 2. Build business context before deep debugging.
-- Use product docs, Slack search, repo `.md` runbooks, and the shared `oncall-investigator-skills` library to understand expected behavior, state transitions, known failure modes, and documented debugging steps.
+- Use product docs, repo `.md` runbooks, and the shared `oncall-investigator-skills` library to understand expected behavior, state transitions, known failure modes, and documented debugging steps.
 
 3. Search related incidents.
-- Search Slack and Jira using the exact error, service names, workflow names, and stack fragments.
+- Use `_slack_search_public`, `_slack_search_public_and_private`, and `jira_get` with the exact error, service names, workflow names, and stack fragments.
 - Include links only when they materially support the conclusion.
 
 4. Query telemetry adaptively.
-- Start with exact IDs in BigQuery and Groundcover.
+- Start with exact IDs in `mcp__bigquery__execute_sql`, `mcp__groundcover__query_logs`, and `mcp__groundcover__query_traces`.
 - Expand to service-level queries, then error strings, then traces.
 - Capture service, error, timestamp, identifiers, and dependency failures.
 - Include Groundcover and GCP log links when available.
-- If BigQuery MCP is unavailable, use any approved fallback API or other log access path available in the environment.
+- Use `mcp__groundcover__query_events`, `mcp__groundcover__query_metrics`, and `mcp__groundcover__get_workloads` only when needed for deploy correlation, service health, ownership, or blast radius.
+- Use `mcp__bigquery__search_catalog` and `mcp__bigquery__get_table_info` only if the right table or dataset is not already known.
+- If BigQuery MCP is unavailable, use an approved fallback API or other approved log access path available in the environment.
 
 5. Reconstruct the system flow.
 - Trace the request path from API to jobs, services, data stores, and external systems.
@@ -78,19 +109,9 @@ Treat the shared SpotDraft skill library at `https://github.com/SpotDraft/oncall
 - Suggest the code, config, observability, or process improvement that would prevent recurrence.
 
 12. Label the Jira ticket when appropriate.
-- Find the incident ticket from the channel topic, messages, bookmarks, or incident identifiers.
-- Read the current labels first, append `agent-investigated`, and preserve existing labels.
+- Use `jira_get` to find the incident ticket from the channel topic, messages, bookmarks, or incident identifiers.
+- Read the current labels first, append `agent-investigated`, and preserve existing labels with `jira_patch`.
 - Skip this step cleanly if no ticket can be found.
-
-## Tooling Guidance
-
-- Use Slack to gather the incident narrative, participants, exact error text, and linked artifacts.
-- Use Slack again at the end to post the investigation result back into the relevant incident channel/thread by default.
-- Use BigQuery and Groundcover for corroborating logs, traces, deploy context, and blast radius evidence.
-- Use Jira to find prior incidents, RCAs, and the current incident ticket.
-- Use the codebase to trace execution paths and read repo-local `.md` guides that may encode debugging shortcuts or known failure modes.
-- Use `https://github.com/SpotDraft/oncall-investigator-skills/tree/master` as the shared runbook library for reusable issue-specific skills. Prefer the closest matching skill before falling back to generic investigation.
-- Use product docs to verify the expected customer workflow before assuming a bug.
 
 ## Evidence Rules
 
@@ -105,7 +126,9 @@ Treat the shared SpotDraft skill library at `https://github.com/SpotDraft/oncall
 By default, post in the same Slack channel as the provided incident URL:
 `*Codex Analysis*`
 
-Then reply in that thread with one concise message unless Slack length limits require splitting. Only skip posting if the user explicitly asks for draft-only or no-post mode.
+Then use `_slack_send_message` to reply in that thread with one concise message unless Slack length limits require splitting. Only skip posting if the user explicitly asks for draft-only or no-post mode.
+
+If the user asked for a Slack draft instead of a live post, use `_slack_send_message_draft`.
 
 Use Slack rich-text formatting where available.
 
@@ -152,3 +175,4 @@ Recommendations
 - Call out missing evidence instead of filling gaps with confidence.
 - Keep the write-up dense, scannable, and action-oriented.
 - Do not ask for separate confirmation before posting when the user invoked this skill with a Slack incident link, unless there is an unusual risk such as uncertainty about the target channel.
+- Slack user metadata lookup is out of scope for this skill. Do not use `_slack_read_user_profile` or `_slack_search_users` unless the user explicitly asks for people lookup outside the incident workflow.

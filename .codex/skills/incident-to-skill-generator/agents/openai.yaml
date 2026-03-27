@@ -1,0 +1,4 @@
+interface:
+  display_name: "Incident Skill Generator"
+  short_description: "Convert resolved incidents into skills"
+  default_prompt: "Use $incident-to-skill-generator to turn this resolved Slack incident into a reusable on-call debugging skill in the repo."

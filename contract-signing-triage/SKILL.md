@@ -268,6 +268,34 @@ Cross-reference BQ Django model data with GCP log errors, DLQ failures, and API 
 **BQ check:** Query signature setup — if `sent_for_signature = TRUE` and an edit is attempted, this error fires.
 **Historical fix:** Overly aggressive safety check was reverted.
 
+### DocuSign 400 — `INVALID_RECIPIENT_SUBJECT`
+
+**What it means:** DocuSign rejected envelope creation before any envelope was created. SpotDraft usually surfaces this as a signing failure (`ExternalSignatureIntegrationCreateResourceFailed`, often ending up as `424` / `SD_PUBLIC_00023` in the FE), but the real error in logs is:
+
+```text
+{"errorCode":"INVALID_RECIPIENT_SUBJECT","message":"Invalid Recipient Subject. Subject length exceeds the maximum of 100 characters for RecipientId: 1."}
+```
+
+**Where it fails:** `integrations_v2/.../docu_sign_external_signature_service_adapter.py` in `_create_envelope()` while building `RecipientEmailNotification(email_subject=...)` and calling `envelopes_api.create_envelope()`.
+
+**Investigation:**
+1. Search GCP logs for `INVALID_RECIPIENT_SUBJECT` and the contract/workspace IDs.
+2. Inspect the contract name and relevant template/workflow name.
+3. Verify whether the current subject-building code path is truncating to 100 characters with `_get_docusign_email_subject(...)[:100]`.
+4. If the visible contract name is already near or above the limit, shorten it and retry.
+5. If the contract name appears safe in Python character count, check for supplementary Unicode / emoji. DocuSign may validate subject length in **UTF-16 code units**, so a string that looks valid in Python can still exceed DocuSign's limit.
+
+**Important nuance from Mar 2026 River incident:** the first hypothesis was “emoji / supplementary Unicode,” but the incident thread later confirmed the specific failing contract title itself was already **101 characters**, so the immediate mitigation was still to **rename the contract to a shorter name** and then **rename the associated template/workflow** so future contracts do not hit the same limit.
+
+**Mitigation:**
+- Ask the customer or support to rename the current contract to a shorter ASCII/BMP-safe title and retry sending for signature.
+- Also shorten the associated template/workflow name if that naming pattern will keep reproducing the same DocuSign subject.
+
+**Long-term fix direction:**
+- validate DocuSign subject length before the API call and return a user-friendly error
+- make truncation match DocuSign's actual counting semantics (UTF-16-safe truncation if needed)
+- add test coverage for both long ASCII titles and supplementary-Unicode titles
+
 ### Preview/Document Generation Failure
 **What it means:** Contract preview or document generation fails, often due to variable type mismatches.
 

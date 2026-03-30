@@ -13,6 +13,7 @@ SpotDraft’s **contract version comparison** feature calls **Litera Compare** (
 - **Browser/UI** showing *“This version of Litera Compare Online requires Litera Compare Server 9.5.3 or later”* — this can appear **even when** the backend server is on a **9.24.x** line; treat it as a **symptom to verify server health and the real API error**, not as proof of an old server version alone
 - Compare **works once**, then **breaks after swapping** which version is “original” vs “modified” (customer may retry many times)
 - **UICompare** path fails while **non-UI** Compare (e.g. RTF/DOCX output in Litera Swagger) **succeeds** for the same logical content
+- Django logs **`WordServerError: "Word server raised an error when handling request"`**, but the same compare later succeeds in production and neither **Litera** nor **Word Server** logs show a matching failure. Treat this as a possible **misattributed / low-observability transient**, not proof that Word Server was the real root cause.
 
 **Earliest failure point** is usually: **Litera rejecting one or both inputs** (often **PDF-related** or **conversion pipeline / Kofax**), not SpotDraft’s generic “compare” button.
 
@@ -95,9 +96,17 @@ Search for the comparison id and/or contract id:
 
 - `Litera UI Compare Failed for version compare: {comparison_id}`
 - `Error: 422 Client Error`
+- `Document Compare failed for {contract_id} with error: Word server raised an error when handling request`
 
 **Example GCP link pattern** (from incident thread — replace timestamps/IDs):  
 `https://console.cloud.google.com/logs/query` with query on `k8s_container`, `{contract_id}`, `ERROR`, and `task_id` if available.
+
+If Django is the **only** place showing the failure:
+
+- capture the **exact comparison ids** and timestamps from admin / Metabase
+- verify whether the same document pair succeeds later from the **SpotDraft UI on prod**
+- compare with **Litera GCE logs** and **Word Server k8s logs** for the same time window
+- if both downstream systems are clean, treat the failure as **unconfirmed / likely transient** and preserve evidence for logging improvements instead of over-asserting a Litera outage
 
 ### Step 4: GCP logs — Litera (GCE)
 
@@ -109,6 +118,11 @@ Litera may run on a **GCE instance** (example from incident: `litera-usa-9-24`, 
 Look for **cancellation token** / timeout / 422 correlation around the failure time.
 
 > Confirm current instance name, zone, and log sink with **platform / pod-editor** owners — names can change between envs.
+
+If the Litera logs show the request as **successful** while Django records a failed compare:
+
+- do not assume the customer-reported issue is falsified; verify whether the failure was **intermittent** and whether the same contracts now compare successfully
+- use this pattern to justify collecting **full stack traces** and better request metadata in logs before assigning the issue to Litera / Word Server
 
 ### Step 5: Vendor (Litera) escalation package
 
@@ -146,6 +160,7 @@ When opening or updating a Litera ticket, include:
 | Same error in Litera Swagger UICompare | Not SpotDraft-only |
 | Compare works after customer replaces PDF (e.g. Print to PDF) | Source PDF / conversion quality |
 | Only happens after swap | Log order of versions; state on server |
+| Django logs `WordServerError`, but Litera / Word Server logs are clean and the same compare succeeds later on prod | Intermittent or misattributed failure; preserve comparison ids and push logging improvements before blaming infrastructure |
 
 ---
 
@@ -154,6 +169,15 @@ When opening or updating a Litera ticket, include:
 - **Widespread** compare failure across many contracts / workspaces → **platform outage**, Litera VM capacity, or **bad deploy** — not one bad PDF.
 - **Single contract**, matrix matches PDF failure → **vendor + document** path; loop in **pod** if Kofax/conversion suspected.
 - Misleading **“9.5.3 or later”** banner with no actual server downgrade → still collect **422** and **Litera logs**; don’t close on UI string alone.
+- Intermittent compare failures with only Django-side `WordServerError` and no downstream logs → route to the owning pod for **observability fixes** before claiming a Word Server / Litera regression.
+
+## Observability follow-up
+
+If the incident matches the intermittent/no-log pattern, capture these engineering follow-ups explicitly:
+
+- add **full stack traces** to Django compare failure logs (`e.full_stack_trace` was called out in incident review)
+- include **contract_id**, **version ids**, and other request metadata in **Word Server** logs so SpotDraft, Litera, and Word Server traces can be correlated
+- count recent failures for the same workspace before escalating; in **SPD-42263 / Rootly #2984**, only **3 failures** were found and all were clustered on the same day
 
 ---
 
@@ -163,6 +187,8 @@ When opening or updating a Litera ticket, include:
 |-----------|--------|
 | **SPD-41228** | Red Ventures — cannot compare versions; **Mitigated**; WS **326328**, contract **983154** (US). |
 | **Rootly #2880** | [incident channel](https://slack.com/app_redirect?channel=C0AFKD8MN2W&team=T23C8AV7T) — `#incident-20260217-medium-red-ventures-cannot-compare-contract-versions` |
+| **SPD-42263** | Glytec — intermittent compare failure where Django logged `WordServerError`, but Litera / Word Server logs were clean and the same comparisons later succeeded. |
+| **Rootly #2984** | `#incident-20260311-high-glytec-error-when-comparing-contracts` — use this as the reference pattern for low-observability transient compare failures. |
 | **Debugging notes (example)** | Google Doc linked from incident thread (initial engineering findings) — use as template for future write-ups. |
 | **Known comparison id (example only)** | `17439` — **do not hardcode** in new investigations; use admin to find current id. |
 

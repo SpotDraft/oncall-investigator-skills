@@ -1,6 +1,6 @@
 ---
 name: contract-signing-triage
-description: "Diagnose and resolve contract signing, execution, and document generation errors in SpotDraft. Use this skill when support reports issues like: contract signing failures, 'Word server raised an error', 'Document Generation Unsuccessful', 'SoftTimeLimitExceeded', pre-sign PDF or prepare-for-signing failures, signature fields overlapping or retained after editing, contracts stuck in signing state, unable to send for signing, unable to execute contract, document preview failures, PDF upload errors, version selection issues when moving contracts between stages, or any error during the sign/execute workflow. Also trigger on 'signing error', 'execution failed', 'signature fields', 'contract preview', 'document generation failure', 'version mismatch', or 'template editable' issues."
+description: "Diagnose and resolve contract signing, execution, and document generation errors in SpotDraft. Use this skill when support reports issues like: contract signing failures, 'Word server raised an error', 'Document Generation Unsuccessful', 'SoftTimeLimitExceeded', pre-sign PDF or prepare-for-signing failures, signature fields overlapping or retained after editing, contracts stuck in signing state, unable to send for signing, unable to execute contract, document preview failures, PDF upload errors, corrupt contract versions that block mark-for-execution TXT checks until a clean re-upload succeeds, version selection issues when moving contracts between stages, or any error during the sign/execute workflow. Also trigger on 'signing error', 'execution failed', 'signature fields', 'contract preview', 'document generation failure', 'version mismatch', 'corrupt docx send for signature', or 'template editable' issues."
 ---
 
 # Contract Signing & Execution Triage
@@ -243,6 +243,44 @@ Cross-reference BQ Django model data with GCP log errors, DLQ failures, and API 
 - Retry the operation (may be intermittent)
 - If persistent, check if it's the specific document causing failure
 - Check feature flag `USE_CONVERT_API_FOR_MERGING` status
+
+### Unable to Send for Signing — Mark-for-Execution TXT Conversion Failure
+
+**What it means:** The contract is blocked before the signature-provider call because the mark-for-execution validation path cannot extract plain text from the current version. This is not a missing-signatory or signature-setup issue. The system first exports the current contract as `DOCX_WITH_FALLBACK_TO_PDF`, then converts that export to `TXT`, then scans the text for unresolved square-bracket placeholders. If the exported file is structurally bad or converter-incompatible, the send-for-signing flow fails before provider handoff.
+
+**Production-confirmed pattern (Whatfix, Feb 2026 / Rootly 2878):** customer was unblocked only after uploading a corrected replacement version. The incident notes explicitly called out the prior version as corrupt, and the same contract could then be sent for signature without any signing-config change.
+
+**Exact code path:**
+1. `perform_mark_for_execution_checks()` in `contracts_v3/services/contract_editor_actions_service.py`
+2. `extract_missing_fields_from_contract_content()`
+3. `download_current_contract_version(format=EditableDocumentDownloadFormat.DOCX_WITH_FALLBACK_TO_PDF)`
+4. `AutoFallbackFileConversionAdapter` in `core/adapters/file_conversion/auto_fallback_conversion_adapter.py`
+5. `OnlyOfficeFileConversionAdapter` first, then `ConvertApiAdapter`
+6. `utils.extract_text_within_square_brackets(...)`
+
+**Why this matters:** this failure class can look like a generic "unable to send for signing" complaint even though the real break is document-content validation. A document can open in Word and still fail this exported DOCX/PDF -> TXT path.
+
+**How to investigate:**
+1. Check whether the latest successful mitigation was a fresh upload or replacement version rather than any signing-config fix.
+2. Inspect version history / admin around the mitigation timestamp. If a new version was uploaded and send-for-signing started working immediately afterward, treat the old version as the likely bad input.
+3. Search logs around the contract id for conversion-path failures rather than provider errors. Useful strings:
+   - `mark_for_execution`
+   - `ConvertAPI`
+   - `Failed to parse the document from SD Office`
+   - `Exhausted all converters`
+   - `Conversion failed`
+4. Distinguish this from "missing placeholders" validation. In this incident class, the file-to-text conversion itself fails; the unblock comes from replacing the file, not from filling brackets or changing signatories.
+5. If the customer reports repeated recurrences, preserve the failing source version and compare it against the corrected upload. This is often a document-content issue, not a workspace-wide signing outage.
+
+**Mitigation:**
+- Ask the customer / support team to upload a corrected or cleaned version of the contract and retry send-for-signing.
+- If they do not have a corrected copy, try a Word "Save As" or another clean re-export path before retrying.
+- If many unrelated customers start failing at the same time, treat this as converter/platform degradation and escalate instead of blaming the individual file.
+
+**Disproof signals:**
+- The same version still fails after a clean re-upload was *not* involved.
+- Logs point to DocuSign / Adobe / signatory setup instead of conversion.
+- Missing-fields validation returns a normal list of bracketed placeholders.
 
 ### Signature Fields Retained After Editing Template Contract
 **What it means:** When a template contract is edited (creating template-editable), signature variables persist.
